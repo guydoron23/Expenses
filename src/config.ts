@@ -1,13 +1,14 @@
 import "dotenv/config";
 import { subDays, format } from "date-fns";
 import { AccountConfig } from "./types";
+import { logToPublicLog } from "./utils/logger.js";
 
-console.log("Parsing config");
+logToPublicLog("Parsing config");
 const {
   DAYS_BACK,
   ACCOUNTS_JSON,
-  TELEGRAM_API_KEY,
-  TELEGRAM_CHAT_ID,
+  TELEGRAM_API_KEY = "",
+  TELEGRAM_CHAT_ID = "",
   GOOGLE_SHEET_ID,
   WORKSHEET_NAME,
   ACCOUNTS_TO_SCRAPE = "",
@@ -20,8 +21,8 @@ export const daysBackToScrape = DAYS_BACK || 10;
 export const worksheetName = WORKSHEET_NAME || "_moneyman";
 
 const accountsToScrape = ACCOUNTS_TO_SCRAPE.split(",")
-  .map((a) => a.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map((a) => a.trim());
 
 export { TELEGRAM_API_KEY, TELEGRAM_CHAT_ID, GOOGLE_SHEET_ID };
 export const systemName = "moneyman";
@@ -44,11 +45,12 @@ export const FileHeaders = [
   "comment",
   "scraped at",
   "scraped by",
+  "identifier",
 ];
 
-function parseAccounts(accountsJson: string): Array<AccountConfig> {
+function parseAccounts(accountsJson?: string): Array<AccountConfig> {
   try {
-    const parsed = JSON.parse(accountsJson);
+    const parsed = JSON.parse(accountsJson!);
     if (Array.isArray(parsed)) {
       // TODO: Add schema validations?
       return parsed as Array<AccountConfig>;

@@ -1,19 +1,24 @@
-import { parseISO, roundToNearestMinutes, format } from "date-fns";
+import { parseISO, roundToNearestMinutes } from "date-fns";
 import type { CompanyTypes } from "israeli-bank-scrapers";
 import type { Transaction } from "israeli-bank-scrapers/lib/transactions";
-import { currentDate, systemName } from "../config.js";
 import { sendError } from "../notifier.js";
 import type { AccountScrapeResult, TransactionRow } from "../types.js";
 
+import { LocalJsonStorage } from "./json.js";
 import { GoogleSheetsStorage } from "./sheets.js";
+import { AzureDataExplorerStorage } from "./azure-data-explorer.js";
 
-const storages = [new GoogleSheetsStorage()];
+export const storages = [
+  new LocalJsonStorage(),
+  new GoogleSheetsStorage(),
+  new AzureDataExplorerStorage(),
+].filter((s) => s.canSave());
 
-export async function loadExistingHashes(startDate: Date) {
+export async function initializeStorage() {
   try {
     return Promise.all(storages.map((s) => s.init()));
   } catch (e) {
-    sendError(e);
+    sendError(e, "initializeStorage");
   }
 }
 
@@ -36,21 +41,6 @@ export async function saveResults(results: Array<AccountScrapeResult>) {
   };
 }
 
-export function transactionRow(tx: TransactionRow): Array<string> {
-  return [
-    /* date */ format(parseISO(tx.date), "dd/MM/yyyy", {}),
-    /* amount */ String(tx.chargedAmount),
-    /* description */ tx.description,
-    /* memo */ tx.memo,
-    /* category */ tx.category,
-    /* account */ tx.account,
-    /* hash */ tx.hash,
-    /* comment */ "",
-    /* scraped at */ currentDate,
-    /* scraped by */ systemName,
-  ];
-}
-
 export function transactionHash(
   tx: Transaction,
   companyId: CompanyTypes,
@@ -63,11 +53,11 @@ export function transactionHash(
 function resultsToTransactions(
   results: Array<AccountScrapeResult>
 ): Array<TransactionRow> {
-  const txns = [];
+  const txns: Array<TransactionRow> = [];
 
   for (let { result, companyId } of results) {
     if (result.success) {
-      for (let account of result.accounts) {
+      for (let account of result.accounts ?? []) {
         for (let tx of account.txns) {
           txns.push({
             ...tx,

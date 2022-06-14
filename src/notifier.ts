@@ -9,32 +9,50 @@ import {
 } from "./config.js";
 import { TransactionStatuses } from "israeli-bank-scrapers/lib/transactions.js";
 import type { AccountScrapeResult, SaveStats } from "./types.js";
-import { createLogger } from "./utils/logger.js";
+import { createLogger, logToPublicLog } from "./utils/logger.js";
 
 const logger = createLogger("notifier");
 
-const bot = new Telegraf(TELEGRAM_API_KEY);
+const bot =
+  TELEGRAM_API_KEY && TELEGRAM_CHAT_ID ? new Telegraf(TELEGRAM_API_KEY) : null;
+
+logToPublicLog(
+  bot
+    ? "Telegram logger initialized, status and errors will be sent"
+    : "No Telegram bot info, status and errors will not be sent"
+);
 
 export async function send(message: string) {
   logger(message);
-  return await bot.telegram.sendMessage(TELEGRAM_CHAT_ID, message);
+  return await bot?.telegram.sendMessage(TELEGRAM_CHAT_ID, message);
 }
 
 export async function deleteMessage(message: Message.TextMessage) {
-  await bot.telegram.deleteMessage(TELEGRAM_CHAT_ID, message.message_id);
+  await bot?.telegram.deleteMessage(TELEGRAM_CHAT_ID, message.message_id);
 }
 
-export async function editMessage(message: number, newText: string) {
-  await bot.telegram.editMessageText(
-    TELEGRAM_CHAT_ID,
-    message,
-    undefined,
-    newText
+export async function editMessage(
+  message: number | undefined,
+  newText: string
+) {
+  if (message !== undefined) {
+    await bot?.telegram.editMessageText(
+      TELEGRAM_CHAT_ID,
+      message,
+      undefined,
+      newText
+    );
+  }
+}
+
+export function sendError(message: any, caller: string = "") {
+  return send(
+    `${caller}\n❌ ${String(
+      message instanceof Error
+        ? `${message.message}\n${message.stack}`
+        : message
+    )}`.trim()
   );
-}
-
-export function sendError(message: any) {
-  return send(`❌ ${String(message)}`);
 }
 
 export function getSummaryMessage(
@@ -47,18 +65,13 @@ export function getSummaryMessage(
         result.errorMessage ? `\n\t${result.errorMessage}` : ""
       }`;
     }
-    return result.accounts.map(
+    return result.accounts?.map(
       (account) =>
         `\t✔️ [${companyId}] ${account.accountNumber}: ${account.txns.length}`
     );
   });
 
-  const saveSummary = stats.map((s) => {
-    const skipped = s.existing + s.pending;
-    return `\t📝 ${s.name} (${s.sheetName})
-\t\t${s.added} added, ${skipped} skipped
-\t\t(${s.existing} existing,  ${s.pending} pending)`;
-  });
+  const saveSummary = stats.map((s) => statsString(s));
 
   return `
 Accounts updated:
@@ -72,9 +85,9 @@ ${getPendingSummary(results)}
 export function getConfigSummary() {
   return `
 Config:
-\tWorksheet name: ${worksheetName}
-\tStart Date: ${scrapeStartDate.toISOString()} (${daysBackToScrape} days back)
-\tTZ: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
+  Worksheet name: ${worksheetName}
+  Start Date: ${scrapeStartDate.toISOString()} (${daysBackToScrape} days back)
+  TZ: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
   `;
 }
 
@@ -83,9 +96,17 @@ function getPendingSummary(results: Array<AccountScrapeResult>) {
     .flatMap(({ result }) => result.accounts)
     .flatMap((account) => account?.txns)
     .filter(Boolean)
-    .filter((t) => t.status === TransactionStatuses.Pending);
+    .filter((t) => t?.status === TransactionStatuses.Pending);
 
   return pending.length
-    ? `Pending txns:\n${pending.map((t) => t.description).join("\n")}`
+    ? `Pending txns:\n${pending.map((t) => t?.description).join("\n")}`
     : "";
+}
+
+function statsString(starts: SaveStats): string {
+  return `
+  📝 ${starts.name} (${starts.table})
+    ${starts.added} added, ${starts.skipped} skipped
+    (${starts.existing} existing,  ${starts.pending} pending)
+`.trim();
 }

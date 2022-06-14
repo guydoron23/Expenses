@@ -28,16 +28,16 @@ export type CategoryDef = {
 
 export interface SaveStats {
   name: string;
-  sheetName: string;
+  table: string;
   total: number;
   added: number;
   pending: number;
-  replaced: number; // rows changed from pending to other??
+  skipped: number;
   existing: number;
 }
 
 export interface TransactionStorage {
-  existingTransactionsHashes: Set<string>;
+  canSave(): boolean;
   init(): Promise<void>;
   saveTransactions(txns: Array<TransactionRow>): Promise<SaveStats>;
 }

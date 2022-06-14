@@ -2,12 +2,13 @@ import { scrapeAccounts } from "./data/index.js";
 import { accounts, scrapeStartDate } from "./config.js";
 import {
   send,
+  editMessage,
   getSummaryMessage,
   sendError,
   getConfigSummary,
 } from "./notifier.js";
-import { loadExistingHashes, saveResults } from "./storage/index.js";
-import { createLogger } from "./utils/logger.js";
+import { initializeStorage, saveResults, storages } from "./storage/index.js";
+import { createLogger, logToPublicLog } from "./utils/logger.js";
 
 const logger = createLogger("main");
 
@@ -24,27 +25,33 @@ await run();
 process.exit(0);
 
 async function run() {
-  console.log("scraping started");
-  logger("scraping started");
+  logToPublicLog("Scraping started");
+  logger("Scraping started");
 
   await send(getConfigSummary());
 
-  const { message_id } = await send("Starting...");
-  try {
-    const [results] = await Promise.all([
-      scrapeAccounts(accounts, scrapeStartDate, message_id),
-      loadExistingHashes(scrapeStartDate),
-    ]);
+  const message = await send("Starting...");
 
-    const saved = await saveResults(results);
-    const summary = getSummaryMessage(results, saved.stats);
+  if (!storages.length) {
+    logger("No storages found, aborting");
+    await editMessage(message?.message_id, "No storages found, aborting");
+  } else {
+    try {
+      const [results] = await Promise.all([
+        scrapeAccounts(accounts, scrapeStartDate, message?.message_id),
+        initializeStorage(),
+      ]);
 
-    await send(summary);
-  } catch (e) {
-    logger(e);
-    await sendError(e);
+      const saved = await saveResults(results);
+      const summary = getSummaryMessage(results, saved.stats);
+
+      await send(summary);
+    } catch (e) {
+      logger(e);
+      await sendError(e);
+    }
   }
 
-  logger("scraping ended");
-  console.log("scraping ended");
+  logger("Scraping ended");
+  logToPublicLog("Scraping ended");
 }
